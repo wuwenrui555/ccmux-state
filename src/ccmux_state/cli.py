@@ -21,7 +21,7 @@ from ccmux_state.monitor import SessionMonitor
 from ccmux_state.pane import (
     _find_chrome_separator,
     has_input_chrome,
-    parse_status_line,
+    parse_status_glyph,
 )
 from ccmux_state.state import Blocked, Dead, Idle, State, Working
 
@@ -120,13 +120,12 @@ def _chrome_shape(pane_text: str) -> str:
 
 
 def _print_debug_one_line(monitor: SessionMonitor, state: State) -> None:
-    event_str = _format_event(monitor.last_event)
-    kind_str = _format_kind(monitor.kind)
-    spinner = parse_status_line(monitor.last_pane_text) or ""
-    spinner_short = spinner[:38] + ("…" if len(spinner) > 38 else "")
+    event_str = _format_event(monitor.last_event)[:10]
+    kind_str = _format_kind(monitor.kind)[:10]
+    glyph = parse_status_glyph(monitor.last_pane_text) or " "
     chrome = _chrome_shape(monitor.last_pane_text)
     print(
-        f"[{event_str:<22}][{kind_str:<22}][{spinner_short:<40}][{chrome}] {state}",
+        f"[{event_str:<10}][{kind_str:<10}][{glyph}][{chrome}] {state}",
         flush=True,
     )
 
@@ -195,7 +194,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Single-line debug output: "
-            "[event][kind][spinner][chrome] state. Chrome glyph: "
+            "[event:10][kind:10][glyph][chrome:5] state. Chrome glyph: "
             "──❯── pure / ─t❯── tmux-tagged top / XXXXX no chrome."
         ),
     )

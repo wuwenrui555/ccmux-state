@@ -81,6 +81,68 @@ def test_format_pane_tail_keeps_last_lines():
     assert "line0" not in out
 
 
+def test_print_debug_one_line_widths_and_glyph(capsys, monkeypatch):
+    """One-line debug widths: event 10, kind 10, glyph 1, chrome 5."""
+    from unittest.mock import MagicMock
+
+    from ccmux_state.cli import _print_debug_one_line
+    from ccmux_state.state import Working
+
+    monitor = MagicMock()
+    monitor.last_event = {"event_type": "user_prompt_submit", "payload": {}}
+    monitor.kind = ("working",)
+    monitor.last_pane_text = (
+        "✻ Thinking… (16s)\n\n" + ("─" * 80) + "\n❯\n" + ("─" * 80) + "\n"
+    )
+    state = Working(text="✻ Thinking… (16s)")
+
+    _print_debug_one_line(monitor, state)
+    captured = capsys.readouterr().out
+
+    # Brackets at fixed positions: [..10..][..10..][1][..5..]
+    assert captured.startswith("[")
+    # split brackets:  '[event][kind][glyph][chrome] state'
+    head, _, tail = captured.partition("] ")
+    parts = head.split("][")
+    assert len(parts) == 4, parts
+    event, kind, glyph, chrome = parts
+    event = event.lstrip("[")
+    chrome = chrome.rstrip("]").rstrip()
+    assert len(event) == 10, repr(event)
+    assert len(kind) == 10, repr(kind)
+    assert len(glyph) == 1, repr(glyph)
+    assert len(chrome) == 5, repr(chrome)
+    assert glyph == "✻"
+    assert chrome == "──❯──"
+
+
+def test_print_debug_one_line_trims_long_event(capsys):
+    """Event names longer than 10 chars must be truncated."""
+    from unittest.mock import MagicMock
+
+    from ccmux_state.cli import _print_debug_one_line
+    from ccmux_state.state import Idle
+
+    monitor = MagicMock()
+    monitor.last_event = {
+        "event_type": "permission_request",
+        "payload": {"tool_name": "AskUserQuestion"},
+    }
+    monitor.kind = ("blocked", "AskUserQuestion")
+    monitor.last_pane_text = ""
+    _print_debug_one_line(monitor, Idle())
+    line = capsys.readouterr().out
+
+    head, _, _ = line.partition("] ")
+    parts = head.split("][")
+    event = parts[0].lstrip("[")
+    kind = parts[1]
+    assert len(event) == 10
+    assert len(kind) == 10
+    assert event.startswith("permission")
+    assert kind.startswith("blocked")
+
+
 def test_chrome_shape_uses_xxxxx_when_no_chrome():
     """The no-chrome marker must be exactly 5 characters so the
     one-line debug output stays column-aligned with the chrome-

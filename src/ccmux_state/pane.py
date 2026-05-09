@@ -104,16 +104,10 @@ def has_input_chrome(lines: list[str]) -> bool:
     return False
 
 
-def parse_status_line(pane_text: str) -> str | None:
-    """Return the spinner-row text above the input chrome.
-
-    Unlike claude-code-state's version, this returns the row whether
-    or not it contains the running-status `…` ellipsis. Completion
-    summaries ("Worked for 56s") and running statuses ("Thinking…
-    16s") both come back; the caller decides what `…` presence means.
-
-    Returns None when the pane has no chrome, or when the row above
-    chrome is blank / not a spinner row.
+def _scan_status_row(pane_text: str) -> str | None:
+    """Internal: return the raw stripped status row above the input
+    chrome (including its leading spinner glyph), or None if the
+    pane has no chrome / nothing scannable above it.
     """
     if not pane_text:
         return None
@@ -128,10 +122,40 @@ def parse_status_line(pane_text: str) -> str | None:
         if not stripped:
             continue
         if stripped[0] in _STATUS_SPINNERS:
-            return stripped[1:].strip()
+            return stripped
         # First non-blank, non-spinner line: bail.
         return None
     return None
+
+
+def parse_status_line(pane_text: str) -> str | None:
+    """Return the spinner-row text above the input chrome.
+
+    Unlike claude-code-state's version, this returns the row whether
+    or not it contains the running-status `…` ellipsis. Completion
+    summaries ("Worked for 56s") and running statuses ("Thinking…
+    16s") both come back; the caller decides what `…` presence means.
+
+    Returns None when the pane has no chrome, or when the row above
+    chrome is blank / not a spinner row.
+    """
+    row = _scan_status_row(pane_text)
+    if row is None:
+        return None
+    return row[1:].strip()
+
+
+def parse_status_glyph(pane_text: str) -> str | None:
+    """Return just the leading spinner glyph from the status row.
+
+    Symmetric with `parse_status_line` but returns the single-char
+    glyph (`·` / `✻` / `✽` / `✶` / `*` etc) rather than the text
+    after it. None when no status row is present.
+    """
+    row = _scan_status_row(pane_text)
+    if row is None:
+        return None
+    return row[0]
 
 
 def extract_between_rules(pane_text: str) -> str:

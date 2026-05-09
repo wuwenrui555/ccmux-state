@@ -69,6 +69,33 @@ def test_parse_status_line_recognises_asterisk_spinner():
     assert "Scurrying…" in text
 
 
+def test_parse_status_glyph_returns_running_glyph():
+    from ccmux_state.pane import parse_status_glyph
+
+    assert parse_status_glyph(_read("pane_working.txt")) == "✻"
+
+
+def test_parse_status_glyph_returns_completion_glyph():
+    """Completion summary still has a glyph; we return it regardless
+    of `…` presence, mirroring parse_status_line's policy."""
+    from ccmux_state.pane import parse_status_glyph
+
+    assert parse_status_glyph(_read("pane_idle_completion.txt")) == "✻"
+
+
+def test_parse_status_glyph_returns_asterisk():
+    from ccmux_state.pane import parse_status_glyph
+
+    assert parse_status_glyph(_read("pane_working_asterisk_spinner.txt")) == "*"
+
+
+def test_parse_status_glyph_returns_none_when_no_status_row():
+    from ccmux_state.pane import parse_status_glyph
+
+    assert parse_status_glyph(_read("pane_idle_empty.txt")) is None
+    assert parse_status_glyph("") is None
+
+
 def test_chrome_finder_ignores_indented_scrollback_dashes():
     """Rendered tool-result scrollback can include indented `─────`
     lines that look like chrome but aren't (they are part of an
