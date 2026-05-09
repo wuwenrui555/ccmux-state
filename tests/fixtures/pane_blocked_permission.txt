@@ -1,0 +1,14 @@
+Some prior content
+
+────────────────────────────────────────────────────────────────────────────────
+ Read file
+
+  Read(/etc/passwd)
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, allow reading from etc/ during this session
+   3. No
+
+ Esc to cancel · Tab to amend
+────────────────────────────────────────────────────────────────────────────────
