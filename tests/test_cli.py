@@ -81,6 +81,17 @@ def test_format_pane_tail_keeps_last_lines():
     assert "line0" not in out
 
 
+def test_chrome_shape_uses_xxxxx_when_no_chrome():
+    """The no-chrome marker must be exactly 5 characters so the
+    one-line debug output stays column-aligned with the chrome-
+    present markers (──❯── / ─t❯──)."""
+    from ccmux_state.cli import _chrome_shape
+
+    assert _chrome_shape("") == "XXXXX"
+    bare = "Some shell content with no chrome anywhere.\n"
+    assert _chrome_shape(bare) == "XXXXX"
+
+
 def test_pretty_idle_with_text():
     assert "Churned" in _pretty(Idle(text="✻ Churned for 55s"))
 

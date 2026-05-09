@@ -18,6 +18,11 @@ import sys
 
 from ccmux_state.errors import CCMuxStateError
 from ccmux_state.monitor import SessionMonitor
+from ccmux_state.pane import (
+    _find_chrome_separator,
+    has_input_chrome,
+    parse_status_line,
+)
 from ccmux_state.state import Blocked, Dead, Idle, State, Working
 
 
@@ -77,6 +82,55 @@ def _print_debug(monitor: SessionMonitor, state: State) -> None:
     print(_format_pane_tail(monitor.last_pane_text), flush=True)
 
 
+def _format_kind(kind) -> str:
+    """Compact kind rendering for one-line output.
+
+    ('idle',)              -> 'idle'
+    ('working',)           -> 'working'
+    ('blocked', 'Bash')    -> 'blocked(Bash)'
+    """
+    if kind == ("idle",):
+        return "idle"
+    if kind == ("working",):
+        return "working"
+    if isinstance(kind, tuple) and len(kind) == 2 and kind[0] == "blocked":
+        return f"blocked({kind[1]})"
+    return str(kind)
+
+
+def _chrome_shape(pane_text: str) -> str:
+    """Five-char visual signature of the captured pane's chrome.
+
+    ──❯──   chrome present, top separator is pure dashes
+    ─t❯──   chrome present, top separator carries a tmux pane title
+    XXXXX   no chrome detected (Blocked dialog or bare bash)
+    """
+    if not pane_text:
+        return "XXXXX"
+    lines = pane_text.split("\n")
+    if not has_input_chrome(lines):
+        return "XXXXX"
+    chrome_idx = _find_chrome_separator(lines)
+    if chrome_idx is None:
+        return "XXXXX"
+    top_line = lines[chrome_idx].rstrip()
+    if all(c == "─" for c in top_line):
+        return "──❯──"
+    return "─t❯──"
+
+
+def _print_debug_one_line(monitor: SessionMonitor, state: State) -> None:
+    event_str = _format_event(monitor.last_event)
+    kind_str = _format_kind(monitor.kind)
+    spinner = parse_status_line(monitor.last_pane_text) or ""
+    spinner_short = spinner[:38] + ("…" if len(spinner) > 38 else "")
+    chrome = _chrome_shape(monitor.last_pane_text)
+    print(
+        f"[{event_str:<22}][{kind_str:<22}][{spinner_short:<40}][{chrome}] {state}",
+        flush=True,
+    )
+
+
 async def _watch(args: argparse.Namespace) -> int:
     try:
         async with SessionMonitor(
@@ -84,7 +138,9 @@ async def _watch(args: argparse.Namespace) -> int:
             poll_interval=args.poll_interval,
         ) as monitor:
             async for state in monitor:
-                if args.debug:
+                if args.debug_one_line:
+                    _print_debug_one_line(monitor, state)
+                elif args.debug:
                     _print_debug(monitor, state)
                 elif args.json:
                     print(json.dumps(_to_dict(state), ensure_ascii=False), flush=True)
@@ -133,6 +189,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug",
         action="store_true",
         help="Multi-line debug output: tap event + kind + State + last pane tail.",
+    )
+    p_watch.add_argument(
+        "--debug-one-line",
+        action="store_true",
+        help=(
+            "Single-line debug output: "
+            "[event][kind][spinner][chrome] state. Chrome glyph: "
+            "──❯── pure / ─t❯── tmux-tagged top / XXXXX no chrome."
+        ),
     )
     p_watch.set_defaults(fn=cmd_watch)
 
