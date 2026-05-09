@@ -26,8 +26,38 @@ _STATUS_SPINNERS = frozenset(["·", "✻", "✽", "✶", "✳", "✢"])
 
 
 def _is_chrome_separator(line: str) -> bool:
-    stripped = line.strip()
-    return len(stripped) >= _CHROME_MIN_LEN and all(c == "─" for c in stripped)
+    """True for a horizontal-rule row that ccmux-state treats as chrome.
+
+    Real claude-code chrome separators start at column 0; indented
+    dashes (e.g. ``  ⎿  ────`` from a rendered tool-result line in
+    scrollback) are excluded. Two shapes are accepted:
+
+    1. Pure dashes: ``────...────`` of length >= _CHROME_MIN_LEN. This
+       is what claude-code emits and what claude-code-state assumes.
+
+    2. Dash run with embedded text: tmux's ``pane-border-status``
+       renders the pane title inside the border row, producing
+       ``─...─ <title> ─...─``. We accept lines whose leading dash
+       run is >= _CHROME_MIN_LEN AND whose total dash density is
+       >= 60% of the (right-stripped) line.
+    """
+    if not line or line[0] != "─":
+        return False
+    stripped = line.rstrip()
+    if len(stripped) < _CHROME_MIN_LEN:
+        return False
+    if all(c == "─" for c in stripped):
+        return True
+    leading_dashes = 0
+    for c in stripped:
+        if c == "─":
+            leading_dashes += 1
+        else:
+            break
+    if leading_dashes < _CHROME_MIN_LEN:
+        return False
+    dash_count = stripped.count("─")
+    return dash_count / len(stripped) >= 0.6
 
 
 def _find_chrome_separator(
