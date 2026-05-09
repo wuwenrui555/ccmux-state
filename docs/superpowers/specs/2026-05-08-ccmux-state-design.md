@@ -1,4 +1,4 @@
-# claude-tap-state v0.1 design
+# ccmux-state v0.1 design
 
 ## Context
 
@@ -10,7 +10,7 @@ fanout) does not want to track every `pre_tool_use` and
 `post_tool_use`; it wants to know "what state is this Claude session
 in **right now**?" and have that answer kept current.
 
-`claude-tap-state` is the smallest library that answers that
+`ccmux-state` is the smallest library that answers that
 question. It consumes the `claude-tap` stream, classifies the session
 into one of three coarse-grained kinds (`idle` / `working` /
 `blocked`), and refines the answer with a narrowly-scoped read of
@@ -64,7 +64,7 @@ of the first window and ignore the rest.
   not surface, this library will misclassify. That's a maintenance
   task for a later version.
 - **No CLI daemon.** v0.1 ships a Python library only. A daemon that
-  writes `~/.claude-tap-state/events.jsonl` for cross-process consumers
+  writes `~/.ccmux-state/events.jsonl` for cross-process consumers
   may come later.
 
 ## Public API
@@ -72,7 +72,7 @@ of the first window and ignore the rest.
 ### `SessionMonitor`
 
 ```python
-from claude_tap_state import SessionMonitor, Idle, Working, Blocked, Dead, State
+from ccmux_state import SessionMonitor, Idle, Working, Blocked, Dead, State
 
 async with SessionMonitor(
     tmux_session="ccmux-projA",                      # primary key
@@ -348,7 +348,7 @@ primitives we need so cc-state can be deprecated cleanly.
 
 ## Out of scope for this spec
 
-- The CLI daemon and `~/.claude-tap-state/events.jsonl` output.
+- The CLI daemon and `~/.ccmux-state/events.jsonl` output.
 - An `interrupted` correction event (Esc is folded into State
   derivation in v0.1; a separate event is not needed).
 - A `drift` correction event for unrecognised dialogs.
