@@ -29,17 +29,28 @@ deprecated.
 
 ## Goals (v0.1)
 
-- A consumer can ask "what state is session X in?" and get a precise,
-  pane-refined answer.
+- A consumer can ask "what state is the Claude in tmux session X?"
+  and get a precise, pane-refined answer.
 - A consumer can subscribe to state-change notifications via async
-  iteration without polling.
+  iteration; the iterator yields only on actual state change.
 - The library exposes both a snapshot accessor (`current`) and an
-  async iterator (`async for state in monitor`); the iterator yields
-  only on actual state change.
+  async iterator (`async for state in monitor`).
 - Single-session API. Multi-session support is the consumer's job
-  (instantiate one `SessionMonitor` per session).
+  (instantiate one `SessionMonitor` per tmux session).
 - Detect Esc-interrupt as part of state derivation: if the kind is
   Working but the pane spinner has no `…`, downgrade to `Idle`.
+- Tmux discovery at cold-start gives a usable `pane_id` and `kind`
+  before any tap event arrives, so the iterator never has an
+  "unknown" initial period.
+
+## Convention
+
+The library assumes **one tmux session = one window = one Claude
+Code instance**. The user-facing identifier is the tmux session
+name. Violating the convention (multiple windows or panes per
+session, or mixing Claude with other commands in the same session)
+is undefined behaviour: `SessionMonitor` will pick the first pane
+of the first window and ignore the rest.
 
 ## Non-goals (v0.1)
 
@@ -64,8 +75,7 @@ deprecated.
 from claude_tap_state import SessionMonitor, Idle, Working, Blocked, Dead, State
 
 async with SessionMonitor(
-    session_id="69a3c45e-4b66-4863-8398-2ac4d50aaebf",
-    pane_id="%80",
+    tmux_session="ccmux-projA",                      # primary key
     poll_interval=1.0,                              # default
     tap_events_path=None,                           # default: ~/.claude-tap/events.jsonl
 ) as monitor:
@@ -122,43 +132,58 @@ kind-only notifications filter on their side.
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
-│  SessionMonitor(session_id, pane_id)                     │
+│  SessionMonitor(tmux_session, poll_interval)             │
 │                                                          │
 │   internal state:                                        │
+│     pane_id: str    (initially from tmux discovery,      │
+│                       then updated from each tap event)  │
 │     kind: idle | working | blocked(tool_name)            │
 │     current: State                                       │
 │                                                          │
-│   ┌──────────────┐         ┌──────────────────┐          │
-│   │ tap consumer │  feeds  │  poll loop       │          │
-│   │  (filtered   │ ──────► │   (every poll_   │          │
-│   │   by sess_id)│         │    interval s)   │          │
-│   └──────────────┘         └────────┬─────────┘          │
-│         (updates kind)              │                    │
-│                                     │ derives State      │
-│                                     ▼                    │
-│                            ┌────────────────┐            │
-│                            │ async queue +  │            │
-│                            │ current cache  │            │
-│                            └────────────────┘            │
-│                                     │                    │
-│                                     ▼                    │
-│                            consumer iterator             │
+│   __aenter__ (cold-start):                               │
+│     1. resolve pane_id via `tmux display-message`        │
+│     2. capture pane → derive initial kind from pane      │
+│     3. derive_state → emit initial State                 │
+│     4. spawn tap consumer task + poll loop task          │
+│                                                          │
+│   tap consumer (background task):                        │
+│     for each event where tmux.session_name == session:   │
+│       update kind from event_type                        │
+│       update pane_id from event.tmux.pane_id (latest)    │
+│                                                          │
+│   poll loop (background task, every poll_interval):      │
+│     capture pane (using current pane_id)                 │
+│     state = derive_state(kind, pane_text)                │
+│     if state != current: current = state; yield          │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Two concurrent asyncio tasks share an internal `kind` variable. The
-poll loop is the single source of yields: it reads pane each tick,
-combines `kind` with pane text via `derive_state(kind, pane_text)`,
-deduplicates, and emits.
+Two concurrent asyncio tasks share two internal variables:
+`pane_id` and `kind`. The poll loop is the single source of yields:
+each tick it captures the pane (using whatever `pane_id` is
+currently recorded) and derives a State by combining the captured
+text with the current `kind`. Yields are deduped against
+`current`.
 
-### kind derivation (tap-event-driven)
+`pane_id` is initialised by tmux discovery at startup so the
+monitor produces a useful state on tick 0. Subsequent tap events
+overwrite `pane_id` with whatever they carry (`event.tmux.pane_id`)
+so the monitor follows the pane across any restarts inside the
+tmux session.
 
-`kind` is internal-only — never exposed to consumers. It is updated
-synchronously when each tap event arrives:
+### kind and pane_id derivation (tap-event-driven)
+
+`kind` and `pane_id` are internal-only — never exposed to
+consumers. Every matching tap event has two side effects: it
+updates `kind` per the table below, and it overwrites `pane_id`
+with `event.tmux.pane_id` (latest wins, regardless of event_type).
+The pane_id update is unconditional because every tap event
+carries `tmux.pane_id` and the convention guarantees it is the
+right pane.
 
 | event_type | new kind |
 |---|---|
-| Initial (before any event) | `idle` |
+| Initial (cold-start, derived from pane) | `idle` / `working` / `blocked(tool_name="unknown")` per pane heuristic |
 | `stop` | `idle` |
 | `user_prompt_submit` | `working` |
 | `pre_tool_use` | `working` (no-op if already) |
@@ -202,20 +227,35 @@ is spinning, the screen is canonical.
 
 ### Cold-start
 
-`SessionMonitor.__aenter__` does a single immediate pane capture and
-sets `kind` from screen alone before any tap events arrive:
+`SessionMonitor.__aenter__` produces the first usable state without
+waiting for any tap event:
 
-- pane has input chrome + spinner row with `…` → `kind = working`
-- pane has input chrome (no spinner with `…`) → `kind = idle`
-- pane has no input chrome → `kind = blocked(tool_name="unknown")`.
-  We do not pattern-match the dialog body on cold-start; the next
-  `permission_request` event refines `tool_name`. If no such event
-  arrives (e.g. the dialog is one Claude Code added without a hook),
-  the state stays `Blocked(tool_name="unknown", content=...)`.
-- pane is empty / unreadable → `kind = idle`
+1. Resolve the tmux pane via:
 
-This means the monitor produces a useful `current` state on tick 0
-without needing event history. Subsequent tap events refine it.
+   ```bash
+   tmux display-message -t <tmux_session>:0 -p '#{pane_id}'
+   ```
+
+   If the tmux session does not exist or has no window 0,
+   `__aenter__` raises a typed exception (see Error handling). The
+   consumer is expected to handle this — there is no monitor to
+   produce a `Dead` state because we never opened one.
+
+2. Run the pane through the same `derive_state` logic, with a
+   pane-only kind heuristic since no events have been seen:
+
+   - pane has input chrome + spinner row with `…` → `kind = working`
+   - pane has input chrome (no spinner with `…`) → `kind = idle`
+   - pane has no input chrome → `kind =
+     blocked(tool_name="unknown")`. We do not pattern-match the
+     dialog body on cold-start; the next `permission_request` event
+     refines `tool_name`.
+   - pane is empty / unreadable → `kind = idle`
+
+3. Emit the initial State to the iterator and store it as
+   `current`. Start the tap consumer task. The first event for this
+   tmux session that arrives later may refine kind and/or update
+   spinner text.
 
 ## Pane primitives
 
@@ -229,9 +269,13 @@ attribution comment in the source. Three functions only:
 - `capture_pane(pane_id: str) -> str` — shells out to `tmux
   capture-pane -p -t <pane_id>`, no `-e` (ANSI escapes excluded)
 
-For `Blocked` content extraction we add a new primitive (not in
-cc-state):
+For tmux session lookup and `Blocked` content extraction we add
+two primitives (not in cc-state):
 
+- `resolve_pane_id(tmux_session: str) -> str` — shells out to
+  `tmux display-message -t <tmux_session>:0 -p '#{pane_id}'`.
+  Raises a typed error if the tmux session does not exist or has no
+  window 0.
 - `extract_between_rules(pane_text: str) -> str` — concatenates
   lines that fall between the most recent pair of horizontal-rule
   rows (`────...`). Returns `""` when fewer than two rule rows are
@@ -247,7 +291,8 @@ We do **not** copy cc-state's `extract_interactive_content` or its
 |---|---|
 | `~/.claude-tap/events.jsonl` does not exist | tap consumer task blocks on `EventStream` (which sleeps until file appears); poll loop continues, deriving State from pane alone |
 | `events.jsonl` is rotated / truncated | `EventStream` does not gracefully recover. Documented in README known-issues; full recovery is a v0.2 task |
-| `tmux capture-pane` fails (pane closed, tmux not running) | emit `Dead(reason="pane_lost" or "tmux_unavailable", last_state=...)`, terminate iterator |
+| `resolve_pane_id` fails at cold-start (tmux session does not exist or has no window 0) | `__aenter__` raises a typed exception; the monitor never starts. Consumer wraps in try/except |
+| `tmux capture-pane` fails mid-life (pane closed, tmux not running) | emit `Dead(reason="pane_lost" or "tmux_unavailable", last_state=...)`, terminate iterator |
 | `session_end` event for this session | emit `Dead(reason="session_end", last_state=...)`, terminate iterator |
 | Consumer cancels the iterator | both internal tasks are cancelled; `EventStream` is closed; capture subprocess (if any) is reaped |
 | Unknown event_type | no-op, single warning to stderr (deduped per type per process) |
