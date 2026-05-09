@@ -1,0 +1,5 @@
+# Add directories markdownlint-cli should skip, one per line.
+# Common candidates (uncomment as needed):
+# docs/specs/
+# docs/plans/
+# vendor/
