@@ -56,6 +56,8 @@ class SessionMonitor:
         self._pending_tool: str | None = None
         self._current: State | None = None
         self._last_yielded: State | None = None
+        self._last_event: dict | None = None
+        self._last_pane_text: str = ""
         self._queue: asyncio.Queue[State] = asyncio.Queue()
         self._tasks: list[asyncio.Task[Any]] = []
         self._stream: Any = None
@@ -65,6 +67,7 @@ class SessionMonitor:
         # Cold-start: tmux discovery + pane capture + initial state.
         self._pane_id = resolve_pane_id(self.tmux_session)
         pane_text = capture_pane(self._pane_id)
+        self._last_pane_text = pane_text
         self._kind = kind_from_pane(pane_text)
         self._current = derive_state(self._kind, pane_text)
         # Seed the queue with the initial state so the iterator's
@@ -84,6 +87,32 @@ class SessionMonitor:
                 "SessionMonitor.current accessed before __aenter__ completed"
             )
         return self._current
+
+    @property
+    def kind(self) -> Kind:
+        """Internal Kind classifier (idle / working / blocked).
+
+        Exposed for diagnostic/debug purposes (e.g. the `--debug`
+        watch CLI). Not part of the stable public API; production
+        consumers should use `current` and the iterator instead.
+        """
+        return self._kind
+
+    @property
+    def last_event(self) -> dict | None:
+        """The most recent matching tap event we processed, if any.
+
+        Diagnostic accessor; see `kind` docstring.
+        """
+        return self._last_event
+
+    @property
+    def last_pane_text(self) -> str:
+        """The most recent pane snapshot we captured.
+
+        Diagnostic accessor; see `kind` docstring.
+        """
+        return self._last_pane_text
 
     def __aiter__(self) -> AsyncIterator[State]:
         return self._iterator()
@@ -109,11 +138,13 @@ class SessionMonitor:
                 if pane_id:
                     self._pane_id = pane_id
                 if event.get("event_type") == "session_end":
+                    self._last_event = event
                     await self._die("session_end")
                     return
                 self._kind, self._pending_tool = kind_from_event(
                     self._kind, self._pending_tool, event
                 )
+                self._last_event = event
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -136,6 +167,7 @@ class SessionMonitor:
                 except PaneCaptureError:
                     await self._die("pane_lost")
                     return
+                self._last_pane_text = pane_text
                 state = derive_state(self._kind, pane_text)
                 if state != self._last_yielded:
                     self._current = state
