@@ -46,6 +46,35 @@ def test_has_input_chrome_false_for_no_chrome():
     assert has_input_chrome(lines) is False
 
 
+def test_has_input_chrome_true_with_tmux_pane_border_title():
+    """tmux's pane-border-status='top' renders the pane title inside
+    the chrome's top separator, producing `─...─ TITLE ─...─`. The
+    bottom separator stays pure dashes."""
+    lines = _read("pane_working_tmux_titled_border.txt").split("\n")
+    assert has_input_chrome(lines) is True
+
+
+def test_parse_status_line_works_with_tmux_titled_top_separator():
+    text = parse_status_line(_read("pane_working_tmux_titled_border.txt"))
+    assert text is not None
+    assert "Thinking…" in text
+
+
+def test_chrome_finder_ignores_indented_scrollback_dashes():
+    """Rendered tool-result scrollback can include indented `─────`
+    lines that look like chrome but aren't (they are part of an
+    earlier captured pane being rendered back as text). The chrome
+    detector must require the rule to start at column 0."""
+    text = _read("pane_working_with_scrollback_dashes.txt")
+    lines = text.split("\n")
+    assert has_input_chrome(lines) is True
+    spinner = parse_status_line(text)
+    assert spinner is not None
+    # The real spinner is the bottom one (`Schlepping…`), not the
+    # one rendered inside the indented scrollback block.
+    assert "Schlepping…" in spinner
+
+
 def test_has_input_chrome_false_for_empty_lines():
     assert has_input_chrome([]) is False
 

@@ -1,0 +1,15 @@
+● Bash(tmux capture-pane -p -J -t ccmux | tail -10)
+  ⎿  · Schlepping… (3m 31s · ↓ 11.1k tokens)
+
+     ───────────────────────────────────────────────────────────────────────────────────────────────
+     … +7 lines (ctrl+o to expand)
+
+● Bash(...)
+  ⎿  Running…
+
+✽ Schlepping… (3m 53s · ↓ 13.2k tokens)
+
+───────────────────────────────────────────────── exit-plan-mode-hook-test ────
+❯
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
