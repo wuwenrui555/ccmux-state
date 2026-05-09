@@ -21,8 +21,13 @@ _CHROME_SEARCH_WINDOW = 20
 _CHROME_INPUT_MAX_LINES = 8
 _STATUS_SCAN_WINDOW = 30
 
-# Spinner glyphs Claude Code uses on its status row.
-_STATUS_SPINNERS = frozenset(["·", "✻", "✽", "✶", "✳", "✢"])
+# Spinner glyphs Claude Code rotates through on its status row.
+# Empirically observed cycle as of 2026-05-09: `·` `✻` `✽` `✶` `*`
+# (5 frames). `✳` and `✢` were in claude-code-state's list and may
+# appear in older Claude Code releases — kept here for forward
+# compatibility. `*` is the plain ASCII asterisk; without it, every
+# 5th frame mis-classifies as Idle.
+_STATUS_SPINNERS = frozenset(["·", "✻", "✽", "✶", "✳", "✢", "*"])
 
 
 def _is_chrome_separator(line: str) -> bool:

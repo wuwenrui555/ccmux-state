@@ -60,6 +60,15 @@ def test_parse_status_line_works_with_tmux_titled_top_separator():
     assert "Thinking…" in text
 
 
+def test_parse_status_line_recognises_asterisk_spinner():
+    """Claude Code rotates through several spinner glyphs including
+    the plain ASCII `*`. Earlier we missed this and every 5th frame
+    classified Working as Idle."""
+    text = parse_status_line(_read("pane_working_asterisk_spinner.txt"))
+    assert text is not None
+    assert "Scurrying…" in text
+
+
 def test_chrome_finder_ignores_indented_scrollback_dashes():
     """Rendered tool-result scrollback can include indented `─────`
     lines that look like chrome but aren't (they are part of an
