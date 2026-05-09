@@ -1,0 +1,3 @@
+Some prior content
+
+A bare bash session, no Claude Code chrome anywhere.
