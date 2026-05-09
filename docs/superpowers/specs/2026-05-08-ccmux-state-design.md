@@ -246,10 +246,12 @@ waiting for any tap event:
 
    - pane has input chrome + spinner row with `…` → `kind = working`
    - pane has input chrome (no spinner with `…`) → `kind = idle`
-   - pane has no input chrome → `kind =
-     blocked(tool_name="unknown")`. We do not pattern-match the
-     dialog body on cold-start; the next `permission_request` event
-     refines `tool_name`.
+   - pane has no input chrome:
+     - dialog body present (any non-blank content between two
+       `────` rule rows) → `kind = blocked(tool_name="unknown")`.
+       The next `permission_request` event refines `tool_name`.
+     - otherwise → `kind = idle`. Treats bare-bash panes (no Claude
+       running) as idle so the monitor does not wedge.
    - pane is empty / unreadable → `kind = idle`
 
 3. Emit the initial State to the iterator and store it as
