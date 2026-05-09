@@ -3,12 +3,7 @@ revision = 2
 requires-python = ">=3.11"
 
 [[package]]
-name = "claude-tap"
-version = "0.1.2"
-source = { git = "https://github.com/wuwenrui555/claude-tap.git#fc1a67814f171bcae67ccf5588815ff793eecd0c" }
-
-[[package]]
-name = "claude-tap-state"
+name = "ccmux-state"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -30,6 +25,11 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "claude-tap"
+version = "0.1.2"
+source = { git = "https://github.com/wuwenrui555/claude-tap.git#fc1a67814f171bcae67ccf5588815ff793eecd0c" }
 
 [[package]]
 name = "colorama"
