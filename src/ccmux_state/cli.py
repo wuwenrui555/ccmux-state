@@ -48,6 +48,35 @@ def _pretty(state: State) -> str:
     return f"[unknown ] {state!r}"
 
 
+def _format_event(event: dict | None) -> str:
+    if event is None:
+        return "—"
+    et = event.get("event_type", "?")
+    payload = event.get("payload") or {}
+    tool = payload.get("tool_name", "")
+    if tool:
+        return f"{et} (tool={tool})"
+    return et
+
+
+def _format_pane_tail(pane_text: str, lines: int = 8) -> str:
+    """Last N non-trailing-blank lines of the pane, indented for output."""
+    if not pane_text:
+        return "  (empty)"
+    rows = pane_text.rstrip("\n").split("\n")
+    tail = rows[-lines:]
+    return "\n".join(f"  | {row}" for row in tail)
+
+
+def _print_debug(monitor: SessionMonitor, state: State) -> None:
+    print("=" * 60, flush=True)
+    print(f"  event : {_format_event(monitor.last_event)}", flush=True)
+    print(f"  kind  : {monitor.kind}", flush=True)
+    print(f"  state : {state}", flush=True)
+    print("  pane  :", flush=True)
+    print(_format_pane_tail(monitor.last_pane_text), flush=True)
+
+
 async def _watch(args: argparse.Namespace) -> int:
     try:
         async with SessionMonitor(
@@ -55,7 +84,9 @@ async def _watch(args: argparse.Namespace) -> int:
             poll_interval=args.poll_interval,
         ) as monitor:
             async for state in monitor:
-                if args.json:
+                if args.debug:
+                    _print_debug(monitor, state)
+                elif args.json:
                     print(json.dumps(_to_dict(state), ensure_ascii=False), flush=True)
                 else:
                     print(_pretty(state), flush=True)
@@ -97,6 +128,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Emit one JSON object per state change instead of pretty text.",
+    )
+    p_watch.add_argument(
+        "--debug",
+        action="store_true",
+        help="Multi-line debug output: tap event + kind + State + last pane tail.",
     )
     p_watch.set_defaults(fn=cmd_watch)
 

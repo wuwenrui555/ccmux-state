@@ -39,6 +39,48 @@ def test_parser_watch_overrides():
     assert args.json is True
 
 
+def test_parser_watch_accepts_debug_flag():
+    parser = build_parser()
+    args = parser.parse_args(["watch", "p", "--debug"])
+    assert args.debug is True
+
+
+def test_format_event_none():
+    from ccmux_state.cli import _format_event
+
+    assert _format_event(None) == "—"
+
+
+def test_format_event_with_tool_name():
+    from ccmux_state.cli import _format_event
+
+    ev = {"event_type": "permission_request", "payload": {"tool_name": "Bash"}}
+    assert _format_event(ev) == "permission_request (tool=Bash)"
+
+
+def test_format_event_without_tool_name():
+    from ccmux_state.cli import _format_event
+
+    ev = {"event_type": "stop", "payload": {}}
+    assert _format_event(ev) == "stop"
+
+
+def test_format_pane_tail_handles_empty():
+    from ccmux_state.cli import _format_pane_tail
+
+    assert _format_pane_tail("") == "  (empty)"
+
+
+def test_format_pane_tail_keeps_last_lines():
+    from ccmux_state.cli import _format_pane_tail
+
+    pane = "\n".join(f"line{i}" for i in range(20))
+    out = _format_pane_tail(pane, lines=3)
+    assert "line17" in out
+    assert "line19" in out
+    assert "line0" not in out
+
+
 def test_pretty_idle_with_text():
     assert "Churned" in _pretty(Idle(text="✻ Churned for 55s"))
 
