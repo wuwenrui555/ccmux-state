@@ -112,9 +112,11 @@ State = Idle | Working | Blocked | Dead
 
 **Equality and dedup.** The async iterator yields when `current !=
 previous_yielded` using full structural equality (kind + all detail
-fields). Spinner-text ticking from `… 16s` to `… 17s` counts as a
-change and produces a new yield. Consumers that want kind-only
-notifications filter on their side.
+fields). The first iteration always yields (no previous value to
+compare against), so a freshly-entered monitor always produces one
+state immediately. Spinner-text ticking from `… 16s` to `… 17s`
+counts as a change and produces a new yield. Consumers that want
+kind-only notifications filter on their side.
 
 ## Architecture
 
@@ -203,12 +205,13 @@ is spinning, the screen is canonical.
 `SessionMonitor.__aenter__` does a single immediate pane capture and
 sets `kind` from screen alone before any tap events arrive:
 
-- pane has input chrome + spinner with `…` → `kind = working`
+- pane has input chrome + spinner row with `…` → `kind = working`
 - pane has input chrome (no spinner with `…`) → `kind = idle`
-- pane has no input chrome but matches a known dialog shape → `kind
-  = blocked(tool_name=?)` (we don't know the tool name from screen
-  alone — emit `Blocked(tool_name="unknown", ...)` until a tap event
-  refines it)
+- pane has no input chrome → `kind = blocked(tool_name="unknown")`.
+  We do not pattern-match the dialog body on cold-start; the next
+  `permission_request` event refines `tool_name`. If no such event
+  arrives (e.g. the dialog is one Claude Code added without a hook),
+  the state stays `Blocked(tool_name="unknown", content=...)`.
 - pane is empty / unreadable → `kind = idle`
 
 This means the monitor produces a useful `current` state on tick 0
@@ -231,7 +234,8 @@ cc-state):
 
 - `extract_between_rules(pane_text: str) -> str` — concatenates
   lines that fall between the most recent pair of horizontal-rule
-  rows (`────...`)
+  rows (`────...`). Returns `""` when fewer than two rule rows are
+  present.
 
 We do **not** copy cc-state's `extract_interactive_content` or its
 6-pattern UI table. Tap's `permission_request` event provides
@@ -281,8 +285,8 @@ Four layers, each independently runnable.
    and cc-state).
 
 A real Claude Code smoke test (run a session, observe monitor
-output) is **not** part of CI. Documented in `docs/manual-smoke.md`
-for developers verifying releases.
+output) is **not** part of CI; release verification is performed by
+the maintainer manually.
 
 ## Dependencies
 
