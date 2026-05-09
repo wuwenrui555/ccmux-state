@@ -81,8 +81,39 @@ def test_format_pane_tail_keeps_last_lines():
     assert "line0" not in out
 
 
-def test_print_debug_one_line_widths_and_glyph(capsys, monkeypatch):
-    """One-line debug widths: event 10, kind 10, glyph 1, chrome 5."""
+def test_format_event_short_strips_tool_annotation():
+    from ccmux_state.cli import _format_event_short
+
+    ev = {
+        "event_type": "permission_request",
+        "payload": {"tool_name": "AskUserQuestion"},
+    }
+    # Just event_type. The tool name lives in the State repr at the
+    # tail of the one-line output, no need to repeat it here.
+    assert _format_event_short(ev) == "permission_request"
+
+
+def test_format_event_short_handles_none():
+    from ccmux_state.cli import _format_event_short
+
+    assert _format_event_short(None) == "—"
+
+
+def test_format_kind_short_strips_tool_name():
+    from ccmux_state.cli import _format_kind_short
+
+    assert _format_kind_short(("idle",)) == "idle"
+    assert _format_kind_short(("working",)) == "working"
+    assert _format_kind_short(("blocked", "AskUserQuestion")) == "blocked"
+
+
+def test_print_debug_one_line_widths_and_glyph(capsys):
+    """One-line debug widths: event 18, kind 7, glyph 1, chrome 5.
+
+    18 fits the longest known event_type (`user_prompt_submit` /
+    `permission_request`); 7 fits the longest known kind name
+    (`working`). No truncation needed.
+    """
     from unittest.mock import MagicMock
 
     from ccmux_state.cli import _print_debug_one_line
@@ -99,29 +130,31 @@ def test_print_debug_one_line_widths_and_glyph(capsys, monkeypatch):
     _print_debug_one_line(monitor, state)
     captured = capsys.readouterr().out
 
-    # Brackets at fixed positions: [..10..][..10..][1][..5..]
-    assert captured.startswith("[")
-    # split brackets:  '[event][kind][glyph][chrome] state'
-    head, _, tail = captured.partition("] ")
+    head, _, _ = captured.partition("] ")
     parts = head.split("][")
     assert len(parts) == 4, parts
     event, kind, glyph, chrome = parts
     event = event.lstrip("[")
     chrome = chrome.rstrip("]").rstrip()
-    assert len(event) == 10, repr(event)
-    assert len(kind) == 10, repr(kind)
+    assert len(event) == 18, repr(event)
+    assert len(kind) == 7, repr(kind)
     assert len(glyph) == 1, repr(glyph)
     assert len(chrome) == 5, repr(chrome)
+    assert event.strip() == "user_prompt_submit"
+    assert kind.strip() == "working"
     assert glyph == "✻"
     assert chrome == "──❯──"
 
 
-def test_print_debug_one_line_trims_long_event(capsys):
-    """Event names longer than 10 chars must be truncated."""
+def test_print_debug_one_line_omits_tool_annotation_in_event_and_kind(capsys):
+    """When kind is blocked(AskUserQuestion) and the event is a
+    permission_request for the same tool, the one-line output keeps
+    the columns at fixed widths and lets State repr carry tool_name.
+    """
     from unittest.mock import MagicMock
 
     from ccmux_state.cli import _print_debug_one_line
-    from ccmux_state.state import Idle
+    from ccmux_state.state import Blocked
 
     monitor = MagicMock()
     monitor.last_event = {
@@ -130,17 +163,20 @@ def test_print_debug_one_line_trims_long_event(capsys):
     }
     monitor.kind = ("blocked", "AskUserQuestion")
     monitor.last_pane_text = ""
-    _print_debug_one_line(monitor, Idle())
+    _print_debug_one_line(monitor, Blocked(tool_name="AskUserQuestion"))
     line = capsys.readouterr().out
 
-    head, _, _ = line.partition("] ")
+    head, _, tail = line.partition("] ")
     parts = head.split("][")
     event = parts[0].lstrip("[")
     kind = parts[1]
-    assert len(event) == 10
-    assert len(kind) == 10
-    assert event.startswith("permission")
-    assert kind.startswith("blocked")
+    assert len(event) == 18
+    assert len(kind) == 7
+    assert event.strip() == "permission_request"
+    assert kind.strip() == "blocked"
+    # tool_name appears only in the State repr at the tail.
+    assert "AskUserQuestion" in tail
+    assert "(tool=" not in line
 
 
 def test_chrome_shape_uses_xxxxx_when_no_chrome():

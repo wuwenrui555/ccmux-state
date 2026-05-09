@@ -83,7 +83,7 @@ def _print_debug(monitor: SessionMonitor, state: State) -> None:
 
 
 def _format_kind(kind) -> str:
-    """Compact kind rendering for one-line output.
+    """Compact kind rendering with tool name for multi-line output.
 
     ('idle',)              -> 'idle'
     ('working',)           -> 'working'
@@ -96,6 +96,35 @@ def _format_kind(kind) -> str:
     if isinstance(kind, tuple) and len(kind) == 2 and kind[0] == "blocked":
         return f"blocked({kind[1]})"
     return str(kind)
+
+
+def _format_event_short(event: dict | None) -> str:
+    """Just event_type; bounded at 18 chars (longest known is
+    `user_prompt_submit` / `permission_request`). No tool annotation —
+    tool_name lives in the State repr at the tail of the one-line
+    output, so repeating it here would only eat columns.
+    """
+    if event is None:
+        return "—"
+    return event.get("event_type", "?")
+
+
+def _format_kind_short(kind) -> str:
+    """Just the kind name (`idle` / `working` / `blocked`); bounded
+    at 7 chars. Tool name lives in State repr at the tail.
+    """
+    if (
+        isinstance(kind, tuple)
+        and len(kind) >= 1
+        and kind[0]
+        in (
+            "idle",
+            "working",
+            "blocked",
+        )
+    ):
+        return kind[0]
+    return "?"
 
 
 def _chrome_shape(pane_text: str) -> str:
@@ -120,12 +149,12 @@ def _chrome_shape(pane_text: str) -> str:
 
 
 def _print_debug_one_line(monitor: SessionMonitor, state: State) -> None:
-    event_str = _format_event(monitor.last_event)[:10]
-    kind_str = _format_kind(monitor.kind)[:10]
+    event_str = _format_event_short(monitor.last_event)
+    kind_str = _format_kind_short(monitor.kind)
     glyph = parse_status_glyph(monitor.last_pane_text) or " "
     chrome = _chrome_shape(monitor.last_pane_text)
     print(
-        f"[{event_str:<10}][{kind_str:<10}][{glyph}][{chrome}] {state}",
+        f"[{event_str:<18}][{kind_str:<7}][{glyph}][{chrome}] {state}",
         flush=True,
     )
 
@@ -194,7 +223,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Single-line debug output: "
-            "[event:10][kind:10][glyph][chrome:5] state. Chrome glyph: "
+            "[event:18][kind:7][glyph][chrome:5] state. Widths fit the "
+            "longest known event_type (18) and kind name (7) without "
+            "truncation. Chrome glyph: "
             "──❯── pure / ─t❯── tmux-tagged top / XXXXX no chrome."
         ),
     )
