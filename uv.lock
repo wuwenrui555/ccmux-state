@@ -28,8 +28,8 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "claude-tap"
-version = "0.1.2"
-source = { git = "https://github.com/wuwenrui555/claude-tap.git#fc1a67814f171bcae67ccf5588815ff793eecd0c" }
+version = "0.1.3"
+source = { git = "https://github.com/wuwenrui555/claude-tap.git#74d71ba380ece5e194ce40261737b5a27e7c1e8c" }
 
 [[package]]
 name = "colorama"
