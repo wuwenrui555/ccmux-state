@@ -109,6 +109,46 @@ def _format_event_short(event: dict | None) -> str:
     return event.get("event_type", "?")
 
 
+_REPLY_PREVIEW_MAX = 50
+
+
+def _event_suffix(event: dict | None) -> str:
+    """Per-event-type tail annotation appended to one-line debug output.
+
+    Adds claude-tap v0.1.3 fields not already present in the State repr:
+
+    - pre_tool_use  -> ` tool=<name>`
+    - post_tool_use -> ` tool=<name> duration=<ms>ms`
+    - stop          -> ` reply="<truncated last_assistant_message>"`
+    - others        -> ``
+
+    Reply previews are collapsed to a single line and truncated to
+    fit one-line layout. Empty replies are omitted entirely.
+    """
+    if event is None:
+        return ""
+    et = event.get("event_type", "")
+    payload = event.get("payload") or {}
+    if et == "pre_tool_use":
+        tool = payload.get("tool_name", "")
+        return f" tool={tool}" if tool else ""
+    if et == "post_tool_use":
+        tool = payload.get("tool_name", "")
+        duration = payload.get("duration_ms", 0)
+        if not tool:
+            return ""
+        return f" tool={tool} duration={duration}ms"
+    if et == "stop":
+        reply = payload.get("last_assistant_message", "")
+        if not reply:
+            return ""
+        flat = reply.replace("\n", " ").replace("\r", " ").strip()
+        if len(flat) > _REPLY_PREVIEW_MAX:
+            flat = flat[:_REPLY_PREVIEW_MAX] + "…"
+        return f' reply="{flat}"'
+    return ""
+
+
 def _format_kind_short(kind) -> str:
     """Just the kind name (`idle` / `working` / `blocked`); bounded
     at 7 chars. Tool name lives in State repr at the tail.
@@ -153,8 +193,9 @@ def _print_debug_one_line(monitor: SessionMonitor, state: State) -> None:
     kind_str = _format_kind_short(monitor.kind)
     glyph = parse_status_glyph(monitor.last_pane_text) or " "
     chrome = _chrome_shape(monitor.last_pane_text)
+    suffix = _event_suffix(monitor.last_event)
     print(
-        f"[{event_str:<18}][{kind_str:<7}][{glyph}][{chrome}] {state}",
+        f"[{event_str:<18}][{kind_str:<7}][{glyph}][{chrome}] {state}{suffix}",
         flush=True,
     )
 

@@ -81,6 +81,109 @@ def test_format_pane_tail_keeps_last_lines():
     assert "line0" not in out
 
 
+def test_event_suffix_pre_tool_use_shows_tool_name():
+    from ccmux_state.cli import _event_suffix
+
+    ev = {
+        "event_type": "pre_tool_use",
+        "payload": {"tool_name": "Bash", "tool_use_id": "toolu_01"},
+    }
+    assert _event_suffix(ev) == " tool=Bash"
+
+
+def test_event_suffix_post_tool_use_shows_tool_and_duration():
+    from ccmux_state.cli import _event_suffix
+
+    ev = {
+        "event_type": "post_tool_use",
+        "payload": {
+            "tool_name": "Bash",
+            "tool_use_id": "toolu_01",
+            "duration_ms": 75,
+        },
+    }
+    assert _event_suffix(ev) == " tool=Bash duration=75ms"
+
+
+def test_event_suffix_stop_shows_truncated_reply():
+    from ccmux_state.cli import _event_suffix
+
+    ev = {
+        "event_type": "stop",
+        "payload": {"last_assistant_message": "Done. Let me know if anything else."},
+    }
+    suffix = _event_suffix(ev)
+    assert suffix.startswith(' reply="')
+    assert "Done. Let me know" in suffix
+
+
+def test_event_suffix_stop_truncates_long_reply():
+    from ccmux_state.cli import _event_suffix
+
+    long_text = "A" * 200
+    ev = {"event_type": "stop", "payload": {"last_assistant_message": long_text}}
+    suffix = _event_suffix(ev)
+    # Truncation cap of 50 chars + ellipsis + closing quote
+    assert len(suffix) < 80
+    assert "…" in suffix
+    assert suffix.endswith('"')
+
+
+def test_event_suffix_stop_handles_empty_reply():
+    from ccmux_state.cli import _event_suffix
+
+    ev = {"event_type": "stop", "payload": {"last_assistant_message": ""}}
+    assert _event_suffix(ev) == ""
+
+
+def test_event_suffix_other_events_return_empty():
+    from ccmux_state.cli import _event_suffix
+
+    for et in ("user_prompt_submit", "notification", "session_end", "session_start"):
+        assert _event_suffix({"event_type": et, "payload": {}}) == "", et
+
+
+def test_event_suffix_handles_none():
+    from ccmux_state.cli import _event_suffix
+
+    assert _event_suffix(None) == ""
+
+
+def test_event_suffix_post_tool_use_strips_newlines_in_reply():
+    """Multi-line replies must collapse to a single line so the
+    one-line debug output stays one line."""
+    from ccmux_state.cli import _event_suffix
+
+    ev = {
+        "event_type": "stop",
+        "payload": {"last_assistant_message": "Line 1\nLine 2\nLine 3"},
+    }
+    suffix = _event_suffix(ev)
+    assert "\n" not in suffix
+
+
+def test_print_debug_one_line_appends_event_suffix(capsys):
+    """When the latest event is a post_tool_use, the one-line output
+    appends ` tool=NAME duration=Nms` after the State repr."""
+    from unittest.mock import MagicMock
+
+    from ccmux_state.cli import _print_debug_one_line
+    from ccmux_state.state import Working
+
+    monitor = MagicMock()
+    monitor.last_event = {
+        "event_type": "post_tool_use",
+        "payload": {"tool_name": "Bash", "duration_ms": 75},
+    }
+    monitor.kind = ("working",)
+    monitor.last_pane_text = ""
+    _print_debug_one_line(monitor, Working(text="x"))
+    line = capsys.readouterr().out
+
+    assert "tool=Bash" in line
+    assert "duration=75ms" in line
+
+
 def test_format_event_short_strips_tool_annotation():
     from ccmux_state.cli import _format_event_short
 
